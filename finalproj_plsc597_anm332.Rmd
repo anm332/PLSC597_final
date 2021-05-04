@@ -1,0 +1,624 @@
+---
+title: "finalproj_plsc597_anm332"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+THE BIG Q:
+Can we use motives to predict whether person is terrorist or non-terrorist?'
+
+1) Basic group differences stats - ANOVA, t-tests
+  - Do for ter vs. non-ter 
+  - Do for leader vs. follower 
+
+2) Logit model 1: Use motive scores from LIWC to predict if terrorist, non-terrorist
+   Logit model 2: Use motive scores to predict leader, follower
+    # part 2 chapter 4, Rhys
+
+3) Decision Tree
+  - Motive scores to classify as ter/nonter
+  - Motive scores to classify as leader/follower
+    
+
+### Basic group differences statistics:
+
+Packages
+```{r}
+# Packages
+library(ggplot2)
+library(dplyr)
+library(RCurl)
+library(readr)
+library(RColorBrewer)
+library(ggpubr)
+
+# Data ###################################
+urldata="https://raw.githubusercontent.com/anm332/SIOP-2021/main/2021_latestdata.csv"
+y <- read_csv(url(urldata))
+study1 <- y
+
+
+# relevant vars = "Type", "relig_viol", "viol", "WC", "affiliation", "achieve", "power"
+study1$Type <- as.factor(study1$Type)
+study1$relig_viol <- as.factor(study1$viol_relig)
+study1$viol <- as.factor(study1$viol)
+study1$relig <- as.factor(study1$relig)
+study1$type_stat <- as.factor(study1$type_stat)
+
+
+
+# Plot: ###############################3
+
+# type & nAff
+ggplot(study1, aes(Type,affiliation))+
+  geom_boxplot()
+
+# type & nAch
+ggplot(study1, aes(Type, achieve))+
+  geom_boxplot()
+
+# type & nPow
+ggplot(study1, aes(Type, power))+
+  geom_boxplot()
+
+##
+
+# type_stat & nAff
+ggplot(study1, aes(type_stat,affiliation))+
+  geom_boxplot()
+
+# type_stat & nAch
+ggplot(study1, aes(type_stat,achieve))+
+  geom_boxplot()
+
+# type_stat & nPow
+ggplot(study1, aes(type_stat,power))+
+  geom_boxplot()
+
+
+
+
+#Need to see if the data passes homoscedasticity test #####################
+#Are the variances homogenous?
+#Fisher's F-Test:
+
+# MAIN F-TEST: TYPE AND WC
+var.test(WC ~ Type, data=study1)
+        # F = 0.80406, num df = 59, denom df = 90, p-value = 0.3717
+        # Therefore there is no significant dif between the variances in WC for terrorist/non-terrorist texts
+
+#### basic stats about the data:
+
+# total word count:
+sum(study1$WC) # 56,903
+
+# number of terrorist docs:
+summary(study1$Type) # 91 ter, 60 non-ter
+
+# describe types of docs: (1=speech, 2=interview, 3=editorial/press release, 4=tweet, 5=other)
+study1$texttype <- as.factor(study1$`Text type (1=speech, 2=interview, 3=editorial/press release, 4=tweet, 5=other)`)
+summary(study1$texttype) # 9 speeches, 71 interviews, 42 press releases, 29 tweets
+
+
+ggplot(data=study1,
+       aes(x=Type, y=WC, fill=texttype)) +
+  geom_bar(stat="identity") +
+  scale_fill_discrete(name="Text Type", 
+                      labels=c("Speech",
+                               "Interview",
+                               "Editorial/Press Release",
+                               "Tweet"))
+
+
+
+
+
+
+# t-tests (are 2 populations different) #####################################################
+
+# 1) terrorist vs non-terrorist: 
+t.test(affiliation~Type, data=study1) # SIGNIFICANT
+        # t = 1.9994, df = 90.863, p-value = 0.04855
+        # non-terrorist: 4.559167, terrorist: 3.115165 
+ggboxplot(study1, x = "Type", y = "affiliation",
+          color = "black", add = "jitter", palette="aaas") +
+  stat_compare_means(method="t.test") + 
+  xlab("Organization Type") +
+  ylab("Affiliation Motive Score") +
+  scale_x_discrete(labels=c("0" = "Non-Terrorist",
+                   "1" = "Terrorist")) +
+  ggtitle("% Of Affiliation Motive Words in Each Text")
+
+t.test(achieve~Type, data=study1) # NOT SIG
+        # t = -0.023757, df = 142.25, p-value = 0.9811
+        # non-terrorist: 1.665500, terrorist: 1.673077
+
+t.test(power~Type, data=study1) # SIGNIFICANT
+        # t = -2.2649, df = 142.72, p-value = 0.02503
+        # non-terrorist: 3.60, terrorist: 5.03
+        # SIG!
+ggboxplot(study1, x = "Type", y = "power",
+          color = "black", add = "jitter", palette="aaas") +
+  stat_compare_means(method="t.test") + 
+  xlab("Organization Type") +
+  ylab("Power Motive Score") +
+  scale_x_discrete(labels=c("0" = "Non-Terrorist",
+                   "1" = "Terrorist")) +
+  ggtitle("% Of Power Motive Words in Each Text")
+
+names(study1)
+study1$Status <- as.character(tolower(study1$Status))
+study1$Status <- as.factor(study1$Status)
+
+
+
+
+# 1) terrorist leader vs terrorist follower: #################
+t.test(affiliation~Status, data=study1) 
+        # t = -0.12, p=0.90
+        # no dif in nAff
+ggboxplot(study1, x = "Status", y = "affiliation",
+          color = "black", add = "jitter", palette="aaas") +
+  stat_compare_means(method="t.test") + 
+  xlab("Terrorist Member Status") +
+  ylab("Affiliation Motive Score") +
+  scale_x_discrete(labels=c("0" = "Follower",
+                   "1" = "Leader")) +
+  ggtitle("% Of Affiliation Motive Words in Each Text")
+
+t.test(achieve~Status, data=study1) 
+        # t = -0.70, p=0.48
+        # no dif in nAch
+ggboxplot(study1, x = "Status", y = "achieve",
+          color = "black", add = "jitter", palette="aaas") +
+  stat_compare_means(method="t.test") + 
+  xlab("Terrorist Member Status") +
+  ylab("Achievement Motive Score") +
+  scale_x_discrete(labels=c("0" = "Follower",
+                   "1" = "Leader")) +
+  ggtitle("% Of Achievement Motive Words in Each Text")
+
+
+t.test(power~Status, data=study1) 
+        # t = 0.32, p=0.75
+
+ggboxplot(study1, x = "Status", y = "power",
+          color = "black", add = "jitter", palette="aaas") +
+  stat_compare_means(method="t.test") + 
+  xlab("Terrorist Member Status") +
+  ylab("Power Motive Score") +
+  scale_x_discrete(labels=c("0" = "Follower",
+                   "1" = "Leader")) +
+  ggtitle("% Of Power Motive Words in Each Text")
+
+
+
+
+# ANOVA: Do motive scores differ by type AND status? ###############################
+
+oneway.test(affiliation~type_stat, data=study1, var.equal=TRUE)
+        # F = 1.6152, num df = 3, denom df = 147, p-value = 0.1883
+oneway.test(achieve~type_stat, data=study1, var.equal = TRUE)
+        # F = 0.15833, num df = 3, denom df = 147, p-value = 0.9242
+oneway.test(power~type_stat, data=study1, var.equal = TRUE)
+        # F = 1.7087, num df = 3, denom df = 147, p-value = 0.1678
+
+aggregate(power~type_stat, data=study1, FUN=mean)
+
+
+ggplot(data=study1,
+       aes(x=type_stat, y=power, fill=type_stat)) +
+  geom_bar(stat="identity") +
+  xlab("Terrorist Profile") +
+  ylab("Power Motive") +
+  scale_x_discrete(labels=c("1" = "Ter, Lead",
+                   "2" = "Ter, Follow",
+                   "3" = "Non-ter, Lead",
+                   "4" = "Non-ter, Follow")) +
+  scale_fill_discrete(name="Org Type", 
+                      labels=c("TL",
+                               "TF",
+                               "NTL",
+                               "NTF")) +
+  ggtitle("Power Motive Score for Each Profile")
+
+# no lol
+
+
+
+```
+    
+    
+Our initial results indicate that terrorists demonstrate significantly higher implicit motives for power and affiliation than non-terrorists. 
+    
+  
+
+    
+2) Next, fit and run the logistic regression model:
+
+#### Library packages
+```{r}
+
+library(readstata13)
+library(mlr)
+library(tidyverse)
+library(MLmetrics)
+library(dplyr)
+library(aod)
+library(ggplot2)
+library(tidyr)
+library(base)
+library(knitr)
+library(e1071)
+library(caTools)
+```
+
+# Logistic regression tutorial from Rhys book:
+
+```{r}
+# library packages
+library(mlr)
+library(tidyverse)
+
+df <- study1
+
+# clean up the data a little
+df <- as_tibble(df)
+names(df)
+nd <- df[c(1,2,4,10, 14:19)]
+
+nd$Type <- as.factor(nd$Type) # turn some variables to factors 
+nd$type_stat <- as.factor(nd$type_stat)
+names(nd)
+
+# Plot the data
+nd_untidy1 <- gather(nd, key="Variable", value="Value", -Type) # each predictor var in one column, values in another column
+nd_untidy1
+
+nd_untidy2 <- gather(nd, key="Variable", value="Value", -type_stat) # each predictor var in one column, values in another column
+nd_untidy2
+
+# MODEL 1 Violin plots for terrorist vs non-terrorist texts and motive scores 
+nd_untidy1 %>%
+  filter(Variable !="Group" & Variable !="relig" & Variable !="type_stat" & Variable !="relig_viol" & Variable !="type_bi" & Variable !="aff2" &
+           Variable !="ach2" & Variable !="pow2" & Variable !="texttype" & Variable !="Status") %>%
+  ggplot(aes(Type, as.numeric(Value))) +
+  facet_wrap( ~ Variable, scales = "free_y") +
+  geom_violin(draw_quantiles = c(0.25,0.5,0.75)) +
+  theme_bw()
+
+# MODEL 2 Violin plots for texts by type/status and motive scores 
+nd_untidy2 %>%
+  filter(Variable !="Group" & Variable !="relig" & Variable !="relig_viol" & Variable !="type_bi" & Variable !="aff2" &
+           Variable !="ach2" & Variable !="pow2" & Variable !="Type") %>%
+  ggplot(aes(type_stat, as.numeric(Value))) +
+  facet_wrap( ~ Variable, scales = "free_y") +
+  geom_violin(draw_quantiles = c(0.25,0.5,0.75)) +
+  theme_bw()
+```
+
+
+## 4.6 Create task, learner, train the model
+MODEL 1:
+```{r}
+
+# first split up the data
+smp_size <- floor(0.7 * nrow(nd))
+
+# set the seed for reproducibility
+set.seed(1234)
+train_ind <- sample(seq_len(nrow(nd)), size = smp_size)
+
+train70 <- nd[train_ind, ] # 70% training df 
+test30 <- nd[-train_ind, ] # 30% testing df 
+
+names(train70)
+new_nd <- train70[c(1, 5:7)]
+names(new_nd)
+
+   
+
+new_nd <- as.data.frame(new_nd)
+
+terTask <- makeClassifTask(data=new_nd, target="Type")
+
+logReg <- makeLearner("classif.logreg", predict.type="prob")
+
+logRegModel <- train(logReg, terTask) # here's the model
+
+
+ more_nd <- train70[c(1,3,4:7, 10)]
+    more_nd <- as.data.frame(more_nd)
+    newterTask <- makeClassifTask(data=more_nd,target="Type")
+
+
+# Now cross-validate the logit model: #########################################################
+
+# wrap together the learner and the imputation method
+logRegWrapper <- makeImputeWrapper("classif.logreg")
+
+kFold <- makeResampleDesc(method = "RepCV", folds = 10, reps = 50,
+                          stratify = TRUE)
+
+logRegwithImpute <- resample(logRegWrapper, terTask,
+                             resampling = kFold,
+                             measures = list(acc, fpr, fnr))
+
+# Aggregated Result: acc.test.mean=0.5681939,fpr.test.mean=0.1279048,fnr.test.mean=0.8529000
+    # correctly classified 57% of texts
+    # incorrectly classified 13% of non-terrorist texts as terrorist (false positive)
+    # incorrectly classified 85% of terrorist texts as non-terrorist (false negatives)
+
+# So not great performance overall, and we've got a big problem with false negatives
+# It's overclassifying texts as non-terrorist
+
+
+# Now cross-validate the 2nd logit model: #########################################################
+
+# wrap together the learner and the imputation method
+logRegWrapper <- makeImputeWrapper("classif.logreg")
+
+kFold <- makeResampleDesc(method = "RepCV", folds = 10, reps = 50,
+                          stratify = TRUE)
+
+logRegwithImpute <- resample(logRegWrapper, newterTask,
+                             resampling = kFold,
+                             measures = list(acc, fpr, fnr))
+
+# Adding RELIG and STATUS improved model fit!! 
+# Aggregated Result: acc.test.mean=0.8300485,fpr.test.mean=0.1288571,fnr.test.mean=0.2286000
+
+
+
+
+# Let's extract model parameters:
+logRegModelData <- getLearnerModel(logRegModel)
+coef(logRegModelData) # intercept = log odds of being a Terrorist text when all continuous vars (motive scores) are 0
+## intercept = -0.03, aff=-0.04, ach=-0.05, pow=0.09
+
+
+# Convert model parameters into odds ratios:
+exp(cbind(Odds_Ratio = coef(logRegModelData), confint(logRegModelData)))
+
+# Use the model to make predictions: #########################################################
+
+pred <- predict(logRegModel, newdata=test30) # 2/6 classified incorrectly 
+
+# confusion matrix
+
+tab <- table(Predicted=pred, Actual=test30)
+
+tab
+
+
+
+```
+
+Since Rhys logit tutorial doesn't support multiclass classification (so can't predict type_stat), do random forest
+
+Three continuous predictor variables:
+- nAff
+- nAch
+- nPow
+
+Outcome classes that documents are assigned to:
+- 1=terrorist, leader
+- 2=terrorist, follower
+- 3=nonterrorist, leader
+- 4=nonterrorist- follower
+
+Decision tree time
+```{r}
+library(mlr)
+library(tidyverse)
+
+```
+
+7.1 Load data
+```{r}
+head(df)
+dfTib <- as_tibble(df)
+
+dfTib
+
+# 7.2 convert logical vars to factors
+dfTib <- mutate_if(dfTib, is.logical, as.factor)
+```
+
+
+7.3 Create task and learner
+```{r}
+names(dfTib)
+
+dfTib$location <- dfTib$`Group area of operation`
+dfTib$documenttype <- dfTib$`Text type (1=speech, 2=interview, 3=editorial/press release, 4=tweet, 5=other)`
+dfTib$othernotes <- dfTib$`Other notes`
+
+names(dfTib)
+
+dfTib <- dfTib[c(1:22)]
+
+names(dfTib)
+str(dfTib)
+
+dfTib1 <- dfTib[c(17, 14:16)] # task 1
+names(dfTib1)
+
+dfTib2 <- dfTib[c(17, 4,14:16,19)] # task 2
+names(dfTib2)
+#dfTib$Status <- as.factor(dfTib$Status)
+
+
+
+
+tibTask1 <- makeClassifTask(data=dfTib1, target="type_stat") # task 1
+
+tibTask2 <- makeClassifTask(data=dfTib2, target="type_stat") # task 2
+
+tree <- makeLearner("classif.rpart")
+
+```
+
+7.4 Print rpart hyperparameters
+```{r}
+getParamSet(tree)
+```
+
+
+7.5 Define hyperparameter space for tuning
+```{r}
+treeParamSpace <- makeParamSet(
+  makeIntegerParam("minsplit", lower = 5, upper = 20),
+  makeIntegerParam("minbucket", lower = 3, upper = 10),
+  makeNumericParam("cp", lower = 0.01, upper = 0.1),
+  makeIntegerParam("maxdepth", lower = 3, upper = 10))
+```
+
+
+7.6 Define random search
+```{r}
+randSearch <- makeTuneControlRandom(maxit = 200)
+
+cvForTuning <- makeResampleDesc("CV", iters = 5)
+```
+
+
+Perform hyperparameter tuning!
+```{r}
+library(parallel)
+library(parallelMap)
+
+parallelStartSocket(cpus = detectCores())
+
+tunedTreePars <- tuneParams(tree, task = tibTask2,
+                           resampling = cvForTuning,
+                           par.set = treeParamSpace,
+                           control = randSearch)
+
+parallelStop()
+
+tunedTreePars
+
+# Tune result 1:
+# Op. pars: minsplit=14; minbucket=7; cp=0.0139; maxdepth=10
+# mmce.test.mean=0.5096774
+
+
+# Tune result 2:
+# Op. pars: minsplit=13; minbucket=8; cp=0.012; maxdepth=10
+# mmce.test.mean=0.3107527
+```
+
+
+7.8 Train the final tuned model
+```{r}
+tunedTree <- setHyperPars(tree, par.vals = tunedTreePars$x)
+
+tunedTreeModel1 <- train(tunedTree, tibTask1)
+tunedTreeModel2 <- train(tunedTree, tibTask2)
+```
+
+
+7.9 Plot the decision tree
+```{r}
+#install.packages("rpart.plot")
+
+library(rpart.plot)
+
+treeModelData1 <- getLearnerModel(tunedTreeModel1)
+
+tree1 <- rpart.plot(treeModelData1, roundint = FALSE,
+           box.palette = "BuBn",
+           type = 5)
+
+treeModelData2 <- getLearnerModel(tunedTreeModel2)
+
+tree2 <- rpart.plot(treeModelData2, roundint = FALSE,
+           box.palette = "BuBn",
+           type = 5)
+
+
+# We got the plot!
+
+```
+Clearly pow is the most indicative metric when predicting whether it's a terrorist or non-terrorist leader/follower
+(all pow<0.41=non-terrorist followers)
+
+7.10 Explore the model
+```{r}
+printcp(treeModelData, digits=3)
+
+
+# complexity parameter (cp) values
+# if the model doesn't benefit from another split by at least cp value, don't split
+
+summary(treeModelData)
+
+
+```
+
+
+7.11 Cross-validate the model-building process
+```{r}
+outer <- makeResampleDesc("CV", iters = 5)
+
+treeWrapper <- makeTuneWrapper("classif.rpart", resampling = cvForTuning,
+                              par.set = treeParamSpace,
+                              control = randSearch)
+
+parallelStartSocket(cpus = detectCores())
+
+cvWithTuning <- resample(treeWrapper, tibTask2, resampling = outer)
+
+parallelStop()
+
+```
+
+
+Extract the cross-validation result
+```{r}
+cvWithTuning
+
+# Resample Result
+# Task: dfTib
+# Learner: classif.rpart.tuned
+# Aggr perf: mmce.test.mean=0.5559140
+# Runtime: 32.8094
+
+
+# Here, we have an MMCE of 0.56 (this is an error rate of 56%, so not great at all)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
